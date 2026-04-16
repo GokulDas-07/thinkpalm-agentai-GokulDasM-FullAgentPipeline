@@ -1,3 +1,5 @@
+import { getAllFromFile, persistToFile, readFromFile } from "@/lib/memory-store";
+
 export type PrdHistoryEntry = {
   prdText: string;
   pageTitle: string;
@@ -13,6 +15,10 @@ export class AgentMemory {
   constructor() {
     this.store = new Map();
     this.tryRehydratePrdHistory();
+    const serverStore = getAllFromFile();
+    for (const [key, value] of Object.entries(serverStore)) {
+      this.store.set(key, value);
+    }
   }
 
   private tryRehydratePrdHistory(): void {
@@ -51,12 +57,19 @@ export class AgentMemory {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   set(key: string, value: any): void {
     this.store.set(key, value);
+    persistToFile(key, value);
     if (key === "prd_history") {
       this.persistPrdHistory(value);
     }
   }
 
   get<T>(key: string): T | undefined {
+    if (!this.store.has(key)) {
+      const fromFile = readFromFile(key);
+      if (fromFile !== null) {
+        this.store.set(key, fromFile);
+      }
+    }
     return this.store.get(key) as T | undefined;
   }
 

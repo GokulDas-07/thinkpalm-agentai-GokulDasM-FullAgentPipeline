@@ -103,60 +103,32 @@ export class GeneratorAgent {
     return { error: "Unknown tool" };
   }
 
-  private collectToolIssuesFromRound(
-    toolCalls: Array<{ function?: { name?: string; arguments?: string } }>,
-  ): string[] {
-    const out: string[] = [];
-    for (const tc of toolCalls) {
-      const name = tc.function?.name ?? "";
-      let args: Record<string, unknown> = {};
-      try {
-        args = JSON.parse(tc.function?.arguments ?? "{}") as Record<string, unknown>;
-      } catch {
-        continue;
-      }
-      if (name === "validate_tsx_syntax") {
-        const res = this.executeTool(name, args) as {
-          valid?: boolean;
-          issues?: string[];
-        };
-        if (!res.valid && res.issues?.length) {
-          out.push(...res.issues);
-        }
-      }
-      if (name === "check_accessibility") {
-        const res = this.executeTool(name, args) as {
-          suggestions?: string[];
-        };
-        if (res.suggestions?.length) {
-          out.push(...res.suggestions);
-        }
-      }
-    }
-    return out;
-  }
-
   private async runCompletionWithToolLoop(
     messages: ChatCompletionMessageParam[],
   ): Promise<{ content: string; toolIssueHints: string[] }> {
+    const MAX_ITERATIONS = 5;
+    let iteration = 0;
     const toolIssueHints: string[] = [];
-    let { content, toolCalls } = await completionWithTools(
-      messages as unknown as Message[],
-      GENERATOR_TOOLS,
-    );
+    let finalContent = "";
 
-    for (let round = 0; round < 8; round++) {
-      if (!toolCalls?.length) {
-        break;
-      }
-
-      toolIssueHints.push(...this.collectToolIssuesFromRound(toolCalls));
-
+    while (iteration < MAX_ITERATIONS) {
+      iteration += 1;
+      const response = await completionWithTools(
+        messages as unknown as Message[],
+        GENERATOR_TOOLS,
+      );
+      const content = response.content ?? "";
+      const toolCalls = response.toolCalls ?? [];
       messages.push({
         role: "assistant",
-        content: content ?? "",
+        content,
         tool_calls: toolCalls,
       });
+
+      if (!toolCalls.length) {
+        finalContent = content;
+        break;
+      }
 
       for (const tc of toolCalls) {
         const fn = tc.function;
@@ -168,22 +140,28 @@ export class GeneratorAgent {
           args = {};
         }
         const result = this.executeTool(toolName, args);
+        this.memory.set(`tool_result_${toolName}`, result);
+        if (toolName === "validate_tsx_syntax") {
+          const syntaxResult = result as { valid?: boolean; issues?: string[] };
+          if (!syntaxResult.valid && syntaxResult.issues?.length) {
+            toolIssueHints.push(...syntaxResult.issues);
+          }
+        }
+        if (toolName === "check_accessibility") {
+          const a11yResult = result as { suggestions?: string[] };
+          if (a11yResult.suggestions?.length) {
+            toolIssueHints.push(...a11yResult.suggestions);
+          }
+        }
         messages.push({
           role: "tool",
           tool_call_id: tc.id,
           content: JSON.stringify(result),
         });
       }
-
-      const next = await completionWithTools(
-        messages as unknown as Message[],
-        GENERATOR_TOOLS,
-      );
-      content = next.content;
-      toolCalls = next.toolCalls;
     }
 
-    return { content: content ?? "", toolIssueHints };
+    return { content: finalContent, toolIssueHints };
   }
 
   async *run(

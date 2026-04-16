@@ -17,6 +17,7 @@ import oneDark from "react-syntax-highlighter/dist/esm/styles/prism/one-dark";
 export interface CodeExportProps {
   componentTree: ComponentTree | null;
   generatedCodes: Record<string, string>;
+  generationSummary: string;
 }
 
 const EMPTY_ROOTS: ComponentNode[] = [];
@@ -52,11 +53,13 @@ function buildIndexExports(nodes: ComponentNode[], codes: Record<string, string>
 export function CodeExport({
   componentTree,
   generatedCodes,
+  generationSummary,
 }: CodeExportProps) {
   const [selectedComponentId, setSelectedComponentId] = useState<string | null>(
     null,
   );
   const [copied, setCopied] = useState(false);
+  const [showSummary, setShowSummary] = useState(true);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -118,6 +121,7 @@ export function CodeExport({
       : "";
 
   const hasSelectedCode = Boolean(selectedCode.trim());
+  const hasSummary = Boolean(generationSummary.trim());
 
   const copyAll = useCallback(async () => {
     if (nodesWithCode.length === 0) {
@@ -288,6 +292,36 @@ export function CodeExport({
       <footer className="shrink-0 border-t border-zinc-200 p-2 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
         {nodesWithCode.length} components · {totalLines} lines of code total
       </footer>
+      <section className="shrink-0 border-t border-zinc-200 bg-zinc-50 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900/40">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between text-left"
+          onClick={() => setShowSummary((prev) => !prev)}
+          aria-expanded={showSummary}
+          aria-controls="generation-summary-panel"
+        >
+          <span className="text-xs font-semibold uppercase tracking-wide text-zinc-700 dark:text-zinc-300">
+            Generation Summary
+          </span>
+          <span className="text-xs text-zinc-500 dark:text-zinc-400">
+            {showSummary ? "Hide" : "Show"}
+          </span>
+        </button>
+        {showSummary ? (
+          <div
+            id="generation-summary-panel"
+            className="mt-2 max-h-40 overflow-auto rounded-md border border-zinc-200 bg-white p-2 text-xs leading-relaxed text-zinc-700 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300"
+          >
+            {hasSummary ? (
+              <pre className="whitespace-pre-wrap font-sans">{generationSummary}</pre>
+            ) : (
+              <p className="text-zinc-500 dark:text-zinc-400">
+                Summary will appear after generation completes.
+              </p>
+            )}
+          </div>
+        ) : null}
+      </section>
     </div>
   );
 }

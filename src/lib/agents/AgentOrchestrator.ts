@@ -3,6 +3,7 @@ import { flattenTree, type ComponentTree } from "@/types/component-tree";
 import { agentMemory, type AgentMemory } from "./AgentMemory";
 import { GeneratorAgent } from "./GeneratorAgent";
 import { PlannerAgent } from "./PlannerAgent";
+import { SummarizerAgent } from "./SummarizerAgent";
 
 export type OrchestrationEvent =
   | { type: "status"; message: string; progress: number }
@@ -17,12 +18,14 @@ export type OrchestrationEvent =
       type: "done";
       summary: { componentCount: number; pageTitle: string };
     }
+  | { type: "summary_ready"; summary: string }
   | { type: "error"; message: string };
 
 export class AgentOrchestrator {
   private memory: AgentMemory = agentMemory;
   private planner = new PlannerAgent(this.memory);
   private generator = new GeneratorAgent(this.memory);
+  private summarizer = new SummarizerAgent(this.memory);
   private sessionHistory: Message[] = [];
 
   async *run(prdText: string): AsyncGenerator<OrchestrationEvent> {
@@ -58,6 +61,7 @@ export class AgentOrchestrator {
     yield { type: "tree_ready", tree };
 
     let index = 0;
+    const generatedCodes: Record<string, string> = {};
     try {
       for await (const result of this.generator.run(
         tree,
@@ -77,6 +81,7 @@ export class AgentOrchestrator {
           message: `Generated ${result.componentName} (${index + 1}/${total})`,
           progress,
         };
+        generatedCodes[result.componentId] = result.code;
         yield { type: "component_ready", ...result };
         index += 1;
       }
@@ -102,6 +107,16 @@ export class AgentOrchestrator {
         pageTitle: tree.pageTitle,
       },
     };
+
+    try {
+      const summary = await this.summarizer.run(tree, generatedCodes);
+      yield { type: "summary_ready", summary };
+    } catch (e) {
+      yield {
+        type: "error",
+        message: e instanceof Error ? e.message : String(e),
+      };
+    }
   }
 
   getPrdHistory() {

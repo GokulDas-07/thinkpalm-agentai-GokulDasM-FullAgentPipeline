@@ -1,16 +1,12 @@
 # SpecToUI
 
+Name:Gokul Das M
+Track:Frontend Dev
+Lab Name:Capstone Sandbox — Full Agent Pipeline
+
 > Turn any Product Requirements Document into a complete React component tree — instantly.
 
 SpecToUI is an AI-powered Next.js application where an agentic pipeline reads a PRD, plans a component hierarchy, and generates production-quality TSX code with Tailwind CSS — all streamed live to a 3-panel UI.
-
----
-
-## Demo
-
-> Paste your PRD → Watch components generate in real time → Export to code
-
-![SpecToUI Demo](./public/demo.png)
 
 ---
 
@@ -32,7 +28,8 @@ This project implements a complete end-to-end agentic pipeline with the followin
 
 **PlannerAgent** (`src/lib/agents/PlannerAgent.ts`)
 - Receives the raw PRD text
-- Uses Groq tool-calling to validate PRD quality and suggest layout patterns
+- Uses Groq tool-calling to validate PRD quality, suggest layout patterns, and search NPM for relevant React component libraries
+- Runs an explicit ReAct loop (Thought → Action → Observation) with bounded tool iterations
 - Produces a validated, structured ComponentTree (via Zod schema)
 - Stores the plan in AgentMemory for downstream use
 
@@ -40,13 +37,20 @@ This project implements a complete end-to-end agentic pipeline with the followin
 - Receives the ComponentTree from PlannerAgent
 - Iterates over every component in the tree
 - Uses Groq tool-calling to validate TSX syntax and check accessibility
+- Uses the same bounded ReAct loop pattern for tool-assisted code refinement
 - Streams generated TSX code component by component
 - Stores each result in AgentMemory
 
+**SummarizerAgent** (`src/lib/agents/SummarizerAgent.ts`)
+- Runs after component generation completes
+- Reads `prd_analysis`, `component_tree`, and `library_suggestions` from AgentMemory
+- Produces a structured generation report using model completion
+- Stores the final report in AgentMemory under `generation_summary`
+
 **AgentOrchestrator** (`src/lib/agents/AgentOrchestrator.ts`)
-- Composes PlannerAgent and GeneratorAgent
+- Composes PlannerAgent, GeneratorAgent, and SummarizerAgent
 - Passes shared AgentMemory to both agents
-- Emits typed streaming events to the UI: `status`, `tree_ready`, `component_ready`, `done`, `error`
+- Emits typed streaming events to the UI: `status`, `tree_ready`, `component_ready`, `done`, `summary_ready`, `error`
 
 ### Tool-Calling
 
@@ -54,17 +58,22 @@ Each agent is equipped with tools using the Groq function-calling API:
 
 | Agent | Tool | Purpose |
 |---|---|---|
-| PlannerAgent | `validate_prd_quality` | Checks if PRD has enough detail to generate UI |
-| PlannerAgent | `suggest_layout_pattern` | Recommends layout based on detected app type |
+| PlannerAgent | `validate_prd_quality` | Returns a structured PRD quality report (score, checks, warnings, next actions) |
+| PlannerAgent | `suggest_layout_pattern` | Returns structured layout guidance based on app type and page complexity |
+| PlannerAgent | `search_component_library` | Searches NPM for relevant React libraries and returns top package suggestions |
 | GeneratorAgent | `validate_tsx_syntax` | Checks generated code has valid structure |
 | GeneratorAgent | `check_accessibility` | Verifies aria labels and semantic HTML |
 
 ### Memory
 
 **AgentMemory** (`src/lib/agents/AgentMemory.ts`)
-- **Session memory** — stores PRD analysis, component tree, and generated codes during a session
-- **Persistent memory** — saves PRD history to localStorage, survives page refresh
+- **Session memory** — stores PRD analysis, component tree, generated codes, and component library suggestions during a session
+- **Persistent memory** — saves PRD history to localStorage (client) and all memory keys to a server-side filesystem store (`.memory-store.json`)
 - Shared instance passed to both agents, enabling inter-agent communication
+
+**Filesystem Memory Store** (`src/lib/memory-store.ts`)
+- Persists agent memory on the server in `.memory-store.json`
+- Supports writing per-key values and reading full memory snapshots across sessions
 
 ### Pipeline Flow
 
@@ -75,7 +84,9 @@ User PRD Input
 PlannerAgent
   ├── Tool: validate_prd_quality
   ├── Tool: suggest_layout_pattern
+  ├── Tool: search_component_library
   ├── Generates ComponentTree (JSON)
+  ├── Stores in AgentMemory["library_suggestions"]
   └── Stores in AgentMemory["component_tree"]
       │
       ▼
@@ -86,6 +97,12 @@ GeneratorAgent
   │     ├── Tool: check_accessibility
   │     └── Yields { componentId, componentName, code }
   └── Stores each in AgentMemory["code_{id}"]
+      │
+      ▼
+SummarizerAgent
+  ├── Reads PRD analysis + component tree + library suggestions from memory
+  ├── Produces developer-facing generation summary
+  └── Stores in AgentMemory["generation_summary"]
       │
       ▼
 Streaming API Route (/api/generate)
@@ -175,7 +192,8 @@ src/
 │   │   ├── AgentMemory.ts       # Session + persistent memory
 │   │   ├── PlannerAgent.ts      # PRD → ComponentTree agent
 │   │   ├── GeneratorAgent.ts    # ComponentTree → TSX agent
-│   │   └── AgentOrchestrator.ts # Composes both agents
+│   │   ├── SummarizerAgent.ts   # Generated output → summary report agent
+│   │   └── AgentOrchestrator.ts # Composes planner, generator, summarizer
 │   ├── prompts.ts               # All AI prompt functions + sample PRDs
 │   └── groq-client.ts           # Groq SDK wrapper with streaming helpers
 ├── hooks/
@@ -195,7 +213,9 @@ src/
 - **Streaming pipeline** — see each component generate in real time via Server-Sent Events
 - **Recursive component tree** — proper parent-child nesting, not a flat list
 - **Tool-calling agents** — agents use function tools to validate and improve output
+- **Post-generation summary** — a final report is generated and streamed after code generation
 - **Session + persistent memory** — history survives page refresh via localStorage
+- **Server-side persistence** — agent memory survives server restarts via filesystem-backed store
 - **Accessible code output** — every generated component includes aria labels and semantic HTML
 - **Export options** — copy individual components or download full ZIP with index.tsx
 - **Sample PRDs** — 3 built-in samples to demo instantly (e-commerce, dashboard, onboarding)
@@ -222,15 +242,3 @@ The AI pipeline uses 4 specialized prompts in sequence:
 4. **Component code prompt** — generates TSX for each node with TypeScript interfaces, Tailwind classes, and accessibility attributes
 
 Each prompt instructs the model to return only valid JSON or raw TSX — no markdown, no explanation — ensuring reliable parsing.
-
----
-
-## Demo Video
-
-[Watch the 8-minute demo on Loom](#) ← add your link here
-
----
-
-## License
-
-MIT

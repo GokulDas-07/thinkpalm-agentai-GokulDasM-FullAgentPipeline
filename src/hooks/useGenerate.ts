@@ -17,6 +17,7 @@ export type GenerateResult = {
   progress: number;
   componentTree: ComponentTree | null;
   generatedCodes: Record<string, string>;
+  generationSummary: string;
   error: string | null;
   prdHistory: PrdHistoryItem[];
   generateFromPrd: (prdText: string) => Promise<void>;
@@ -30,6 +31,7 @@ const initialState: Pick<
   | "progress"
   | "componentTree"
   | "generatedCodes"
+  | "generationSummary"
   | "error"
   | "prdHistory"
 > = {
@@ -38,6 +40,7 @@ const initialState: Pick<
   progress: 0,
   componentTree: null,
   generatedCodes: {},
+  generationSummary: "",
   error: null,
   prdHistory: [],
 };
@@ -64,6 +67,9 @@ export function useGenerate(): GenerateResult {
   const [progress, setProgress] = useState(initialState.progress);
   const [componentTree, setComponentTree] = useState(initialState.componentTree);
   const [generatedCodes, setGeneratedCodes] = useState(initialState.generatedCodes);
+  const [generationSummary, setGenerationSummary] = useState(
+    initialState.generationSummary,
+  );
   const [error, setError] = useState(initialState.error);
   const [prdHistory, setPrdHistory] = useState(initialState.prdHistory);
 
@@ -117,6 +123,9 @@ export function useGenerate(): GenerateResult {
         setStatus("done");
         setStatusMessage("Complete!");
         break;
+      case "summary_ready":
+        setGenerationSummary(event.summary);
+        break;
       case "error":
         setStatus("error");
         setError(event.message);
@@ -133,6 +142,7 @@ export function useGenerate(): GenerateResult {
       setProgress(0);
       setComponentTree(null);
       setGeneratedCodes({});
+      setGenerationSummary("");
       setError(null);
 
       try {
@@ -222,6 +232,7 @@ export function useGenerate(): GenerateResult {
     setProgress(initialState.progress);
     setComponentTree(initialState.componentTree);
     setGeneratedCodes(initialState.generatedCodes);
+    setGenerationSummary(initialState.generationSummary);
     setError(initialState.error);
     setPrdHistory(initialState.prdHistory);
   }, []);
@@ -232,6 +243,7 @@ export function useGenerate(): GenerateResult {
     progress,
     componentTree,
     generatedCodes,
+    generationSummary,
     error,
     prdHistory,
     generateFromPrd,

@@ -127,6 +127,7 @@ export default function Home() {
     progress,
     componentTree,
     generatedCodes,
+    generationSummary,
     error,
     prdHistory,
     generateFromPrd,
@@ -393,6 +394,7 @@ export default function Home() {
           <CodeExport
             componentTree={componentTree}
             generatedCodes={generatedCodes}
+            generationSummary={generationSummary}
           />
         </div>
       </div>
